@@ -1,0 +1,4 @@
+BasedOnStyle: LLVM
+AlwaysBreakTemplateDeclarations: true
+IndentWidth: 4
+ColumnLimit: 100
