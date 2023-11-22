@@ -6,6 +6,8 @@
 #include <stack>
 #include <vector>
 
+// TODO remove cout messages
+
 template <typename Key, size_t N>
 class BTree;
 
@@ -22,7 +24,7 @@ struct Node {
 
     keys_t keys;
     sons_t sons;
-    size_t counter; // размер поддерева
+    size_t counter; // sizeof subtree
     Node *parent = nullptr;
 
   public:
@@ -117,23 +119,23 @@ struct Node {
         auto result = std::lower_bound(keys.begin(), keys.end(), key);
         if (result != keys.end()) {
             if (*result == key) {
-                return BTree<Key, N>::const_iterator(this, result - keys.begin());
+                return {this, result - keys.begin()};
             } else if (!sons.empty()) {
                 return sons[result - keys.begin()]->find(key);
             }
-            return BTree<Key, N>::const_iterator();
+            return {};
         }
         if (!sons.empty()) {
             return sons.back()->find(key);
         }
-        return BTree<Key, N>::const_iterator();
+        return {};
     }
 
     BTree<Key, N>::iterator find(const Key &key) {
         auto result = std::lower_bound(keys.begin(), keys.end(), key);
         if (result != keys.end()) {
             if (*result == key) {
-                return BTree<Key, N>::iterator(this, result - keys.begin());
+                return {this, result - keys.begin()};
             } else if (!sons.empty()) {
                 return sons[result - keys.begin()]->find(key);
             }
@@ -162,7 +164,7 @@ struct Node {
                 return sons[index]->insert(key);
             }
             return sons[index + 1]->insert(key);
-        } 
+        }
         keys.insert(result, key);
         return true;
     }
@@ -216,7 +218,7 @@ struct Node {
         counter -= 1;
 
         if (sons.empty()) {
-            if (result != keys.end() && *result != key) {   
+            if (result != keys.end() && *result != key) {
                 counter += 1;
                 return false;
             }
@@ -326,7 +328,7 @@ struct Node {
 
         right->parent = this;
         left->parent = this;
-    
+
         sons[son_index] = left;
         sons.push_back(right);
 
@@ -369,7 +371,7 @@ class BTree {
             root->insert(elem);
         }
     }
-    BTree(const BTree<Key, N>& other) = delete;
+    BTree(const BTree<Key, N> &other) = delete;
 
     ~BTree() { delete root; }
 
@@ -451,7 +453,16 @@ class BTree {
             }
             position = node->keys.size();
             while (position == node->keys.size() && node->parent) {
-                node_pointer temp = node;
+                // TODO rewrite to std::upper_bound
+                /*
+                    auto temp = node->keys[position];
+                    node = node->parent;
+                    position = 
+                        std::upper_bound(node->keys.begin(), node->keys.end(), temp) -
+                        node->keys.begin()
+
+                */
+                auto temp = node;
                 node = node->parent;
                 position =
                     std::find(node->sons.begin(), node->sons.end(), temp) - node->sons.begin();
