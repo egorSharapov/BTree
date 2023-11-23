@@ -190,21 +190,16 @@ struct Node {
     }
 
     void erase_helper(size_t left, size_t right) {
-        sons[left]->keys.push_back(keys[left]);
-        sons[left]->counter += sons[right]->counter + 1;
+        Node *left_son = sons[left];
+        Node *right_son = sons[right];
 
-        std::cout << "pushing key from right to left\n";
-        for (const auto &key : sons[right]->keys) {
-            sons[left]->keys.push_back(key);
-        }
-        std::cout << "pushing son_ptr from right to left\n";
-        for (const auto &son_ptr : sons[right]->sons) {
-            sons[left]->sons.push_back(son_ptr);
-        }
+        left_son->keys.push_back(keys[left]);
+        left_son->counter += right_son->counter + 1;
+
+        left_son->keys.insert(left_son->keys.end(), right_son->keys.begin(), right_son->keys.end());
+        left_son->sons.insert(left_son->sons.end(), right_son->sons.begin(), right_son->sons.end());
 
         delete_son(right);
-
-        std::cout << "erasing right son\n";
 
         keys.erase(keys.begin() + left);
         sons.erase(sons.begin() + right);
@@ -212,7 +207,6 @@ struct Node {
 
   public:
     bool erase(const Key &key) {
-        std::cout << "erasing..\n";
         auto result = std::lower_bound(keys.begin(), keys.end(), key);
         size_t index = result - keys.begin();
         counter -= 1;
@@ -223,7 +217,6 @@ struct Node {
                 return false;
             }
             // leaf node
-            std::cout << "erasing from leaf\n";
             keys.erase(result);
             return true;
         }
@@ -231,28 +224,22 @@ struct Node {
         if (result != keys.end() && *result == key) {
             // take key from mostleft son
             if (sons[index]->keys.size() > N - 1) {
-                std::cout << "take key from mostleft son\n";
                 *result = max(sons[index + 1]);
                 return sons[index]->erase(*result);
             }
             // take key from mostright son
             if (sons[index + 1]->keys.size() > N - 1) {
-                std::cout << "take key from mostright son\n";
                 *result = min(sons[index]);
                 return sons[index + 1]->erase(*result);
             }
-            std::cout << "move keys from right son to left\n";
             erase_helper(index, index + 1);
             return sons[index]->erase(key);
         }
 
         // delete key from son node
-        std::cout << "delete from son\n";
         if (sons[index]->keys.size() == N - 1) {
             if (index < sons.size() - 1 && sons[index + 1]->keys.size() == N) {
                 // take key from right son
-                std::cout << "take key from right son\n";
-
                 sons[index]->keys.push_back(keys[index]);
 
                 if (!sons[index]->sons.empty()) {
@@ -268,7 +255,6 @@ struct Node {
 
             } else if (index > 0 && sons[index - 1]->keys.size() == N) {
                 // take key from left son
-                std::cout << "take key from left son\n";
                 sons[index]->keys.insert(sons[index]->keys.begin(), keys[index]);
 
                 if (!sons[index]->sons.empty()) {
@@ -454,18 +440,18 @@ class BTree {
             position = node->keys.size();
             while (position == node->keys.size() && node->parent) {
                 // TODO rewrite to std::upper_bound
-                /*
-                    auto temp = node->keys[position];
-                    node = node->parent;
-                    position = 
-                        std::upper_bound(node->keys.begin(), node->keys.end(), temp) -
-                        node->keys.begin()
-
-                */
+#if 0
+                auto temp = node->keys[position];
+                node = node->parent;
+                position = 
+                    std::lower_bound(node->keys.begin(), node->keys.end(), temp) -
+                    node->keys.begin()
+#else
                 auto temp = node;
                 node = node->parent;
                 position =
                     std::find(node->sons.begin(), node->sons.end(), temp) - node->sons.begin();
+#endif
             }
 
             return *this;
@@ -476,8 +462,13 @@ class BTree {
             return temp;
         }
 
-        base_iterator &operator--(){};
-        base_iterator operator--(int){};
+        base_iterator &operator--() {}
+
+        base_iterator operator--(int) {
+            base_iterator temp = *this;
+            --(*this);
+            return temp;
+        };
 
         friend bool operator==(const base_iterator &lhs, const base_iterator &rhs) {
             return (lhs.node == rhs.node) && (lhs.position == rhs.position);

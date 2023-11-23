@@ -1,20 +1,27 @@
 #include <benchmark/benchmark.h>
-#define NOTDEBUG
 #include "Btree.hpp"
-#include <chrono>
 #include <set>
 
-int range_query(const std::set<int64_t> &set, int64_t begin, int64_t end) {
+
+static void custom_args(benchmark::internal::Benchmark* b) {
+    b->Args({1 << 11, 1 << 5, 1 << 10});
+    b->Args({1 << 15, 0, 1 << 11});
+}
+
+
+static int range_query(const std::set<int64_t> &set, int64_t begin, int64_t end) {
     using it = std::set<int64_t>::iterator;
     it start = set.lower_bound(begin);
     it stop = set.upper_bound(end);
     return std::distance(start, stop);
 }
 
+
+template <size_t N>
 static void BM_BTreeDistanceTest(benchmark::State &state) {
     for (auto _ : state) {
         state.PauseTiming();
-        BTree<int64_t, 10> btree;
+        BTree<int64_t, N> btree;
         for (int i = 0; i < state.range(0); ++i) {
             btree.insert(i);
         }
@@ -39,7 +46,9 @@ static void BM_SetDistanceTest(benchmark::State &state) {
     }
 }
 
-BENCHMARK(BM_SetDistanceTest)->Args({1 << 11, 1 << 5, 1 << 10});
-BENCHMARK(BM_BTreeDistanceTest)->Args({1 << 11, 1 << 5, 1 << 10});
+BENCHMARK(BM_SetDistanceTest)->Apply(custom_args);
+BENCHMARK(BM_BTreeDistanceTest<6>)->Apply(custom_args);
+BENCHMARK(BM_BTreeDistanceTest<8>)->Apply(custom_args);
+BENCHMARK(BM_BTreeDistanceTest<10>)->Apply(custom_args);
 
 BENCHMARK_MAIN();
