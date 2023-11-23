@@ -3,10 +3,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <stack>
 #include <vector>
-
-// TODO remove cout messages
+#include <utility>
 
 template <typename Key, size_t N>
 class BTree;
@@ -22,323 +20,309 @@ struct Node {
     template <typename T, size_t U>
     friend std::ofstream &operator<<(std::ofstream &out, const Node<T, U> &node);
 
-    keys_t keys;
-    sons_t sons;
-    size_t counter; // sizeof subtree
-    Node *parent = nullptr;
+    keys_t m_keys;
+    sons_t m_sons;
+    size_t m_counter = 0; // sizeof subtree
+    Node *m_parent = nullptr;
 
   public:
-    Node() : counter(0) {}
+    Node() = default;
     Node(const keys_t &keys, const sons_t &sons, size_t size)
-        : keys(keys), sons(sons), counter(size) {}
+        : m_keys(keys), m_sons(sons), m_counter(size) {}
 
-    Node(keys_t &&other_keys, sons_t &&other_sons, size_t size)
-        : keys(other_keys), sons(other_sons), counter(size) {}
+    Node(keys_t &&other_keys, sons_t &&other_sons, size_t size) noexcept
+        : m_keys(other_keys), m_sons(other_sons), m_counter(size) {}
 
     ~Node() {
-        for (Node *son : sons) {
+        for (Node *son : m_sons) {
             delete son;
         }
     }
 
     // returns number of keys in subtree with this node as root
     size_t lower_count(const Key &key) const {
-        auto result = std::lower_bound(keys.begin(), keys.end(), key);
-        size_t index = result - keys.begin();
-        size_t counter = keys.size() - index;
+        auto result = std::lower_bound(m_keys.begin(), m_keys.end(), key);
+        size_t index = result - m_keys.begin();
+        size_t counter = m_keys.size() - index;
 
-        if (sons.empty()) {
+        if (m_sons.empty()) {
             return counter;
         }
-        for (int i = index + 1; i < sons.size(); ++i) {
-            counter += sons[i]->count();
+        for (int i = index + 1; i < m_sons.size(); ++i) {
+            counter += m_sons[i]->count();
         }
 
-        if (result == keys.end() || (result != keys.end() && *result != key)) {
-            counter += sons[index]->lower_count(key);
+        if (result == m_keys.end() || (result != m_keys.end() && *result != key)) {
+            counter += m_sons[index]->lower_count(key);
         }
         return counter;
     }
     size_t upper_count(const Key &key) const {
-        auto result = std::upper_bound(keys.begin(), keys.end(), key);
-        size_t index = result - keys.begin();
+        auto result = std::upper_bound(m_keys.begin(), m_keys.end(), key);
+        size_t index = result - m_keys.begin();
         size_t counter = index;
 
-        if (sons.empty()) {
+        if (m_sons.empty()) {
             return counter;
         }
         for (int i = 0; i < index; ++i) {
-            counter += sons[i]->count();
+            counter += m_sons[i]->count();
         }
-        if (result == keys.end() || (result != keys.end() && *result != key)) {
-            counter += sons[index]->upper_count(key);
+        if (result == m_keys.end() || (result != m_keys.end() && *result != key)) {
+            counter += m_sons[index]->upper_count(key);
         }
         return counter;
     }
 
-    size_t count() const { return counter; }
+    size_t count() const { return m_counter; }
 
     size_t distance(const Key &begin, const Key &end) const {
-        auto first = std::lower_bound(keys.begin(), keys.end(), begin);
-        auto second = std::lower_bound(keys.begin(), keys.end(), end);
+        auto first = std::lower_bound(m_keys.begin(), m_keys.end(), begin);
+        auto second = std::lower_bound(m_keys.begin(), m_keys.end(), end);
 
         size_t counter = second - first + 1;
-        size_t left_bound = first - keys.begin();
-        size_t right_bound = second - keys.begin();
-        if (sons.empty()) {
+        size_t left_bound = first - m_keys.begin();
+        size_t right_bound = second - m_keys.begin();
+        if (m_sons.empty()) {
             return counter;
         }
 
-        if (first == keys.end()) {
-            return sons.back()->distance(begin, end);
+        if (first == m_keys.end()) {
+            return m_sons.back()->distance(begin, end);
         }
 
         if (first == second) {
             if (*first != begin && *second != end) {
-                return sons[left_bound]->distance(begin, end);
+                return m_sons[left_bound]->distance(begin, end);
             }
             if (*first == begin && *second == end) {
                 return counter;
             }
         }
         if (*first != begin) {
-            counter += sons[left_bound]->lower_count(begin);
+            counter += m_sons[left_bound]->lower_count(begin);
         }
-        if (second == keys.end() || *second != end) {
-            counter += sons[right_bound]->upper_count(end);
+        if (second == m_keys.end() || *second != end) {
+            counter += m_sons[right_bound]->upper_count(end);
             right_bound -= 1;
             counter -= 1;
         }
         for (int i = left_bound + 1; i < right_bound + 1; ++i) {
-            counter += sons[i]->count();
+            counter += m_sons[i]->count();
         }
         return counter;
     }
 
     BTree<Key, N>::const_iterator find(const Key &key) const {
-        auto result = std::lower_bound(keys.begin(), keys.end(), key);
-        if (result != keys.end()) {
+        auto result = std::lower_bound(m_keys.begin(), m_keys.end(), key);
+        if (result != m_keys.end()) {
             if (*result == key) {
-                return {this, result - keys.begin()};
-            } else if (!sons.empty()) {
-                return sons[result - keys.begin()]->find(key);
+                return {this, result - m_keys.begin()};
+            } else if (!m_sons.empty()) {
+                return m_sons[result - m_keys.begin()]->find(key);
             }
             return {};
         }
-        if (!sons.empty()) {
-            return sons.back()->find(key);
+        if (!m_sons.empty()) {
+            return m_sons.back()->find(key);
         }
         return {};
     }
 
     BTree<Key, N>::iterator find(const Key &key) {
-        auto result = std::lower_bound(keys.begin(), keys.end(), key);
-        if (result != keys.end()) {
-            if (*result == key) {
-                return {this, result - keys.begin()};
-            } else if (!sons.empty()) {
-                return sons[result - keys.begin()]->find(key);
-            }
-            return {};
-        }
-        if (!sons.empty()) {
-            return sons.back()->find(key);
-        }
-        return {};
+        return std::as_const(*this).find(key);
     }
 
     bool insert(const Key &key) {
-        auto result = std::lower_bound(keys.begin(), keys.end(), key);
-        size_t index = result - keys.begin();
-        counter += 1; // update node counter
+        auto result = std::lower_bound(m_keys.begin(), m_keys.end(), key);
+        size_t index = result - m_keys.begin();
+        m_counter += 1; // update node counter
 
-        if (sons.size() > index) {
-            if (sons[index]->keys.size() == 2 * N - 1) {
+        if (m_sons.size() > index) {
+            if (m_sons[index]->m_keys.size() == 2 * N - 1) {
                 split(index);
             }
-            if (index == keys.size()) {
-                return sons.back()->insert(key);
+            if (index == m_keys.size()) {
+                return m_sons.back()->insert(key);
             }
 
-            if (keys[index] >= key) {
-                return sons[index]->insert(key);
+            if (m_keys[index] >= key) {
+                return m_sons[index]->insert(key);
             }
-            return sons[index + 1]->insert(key);
+            return m_sons[index + 1]->insert(key);
         }
-        keys.insert(result, key);
+        m_keys.insert(result, key);
         return true;
     }
 
-  private:
-    Key max(const Node *node) {
-        while (!node->sons.empty()) {
-            node = node->sons.back();
-        }
-        return node->keys.back();
-    }
-
-    Key min(const Node *node) {
-        while (!node->sons.empty()) {
-            node = node->sons.front();
-        }
-        return node->keys.front();
-    }
-
-    void delete_son(size_t index) {
-        sons[index]->sons.clear();
-        delete sons[index];
-    }
-
-    void erase_helper(size_t left, size_t right) {
-        Node *left_son = sons[left];
-        Node *right_son = sons[right];
-
-        left_son->keys.push_back(keys[left]);
-        left_son->counter += right_son->counter + 1;
-
-        left_son->keys.insert(left_son->keys.end(), right_son->keys.begin(), right_son->keys.end());
-        left_son->sons.insert(left_son->sons.end(), right_son->sons.begin(), right_son->sons.end());
-
-        delete_son(right);
-
-        keys.erase(keys.begin() + left);
-        sons.erase(sons.begin() + right);
-    }
-
-  public:
     bool erase(const Key &key) {
-        auto result = std::lower_bound(keys.begin(), keys.end(), key);
-        size_t index = result - keys.begin();
-        counter -= 1;
+        auto result = std::lower_bound(m_keys.begin(), m_keys.end(), key);
+        size_t index = result - m_keys.begin();
+        m_counter -= 1;
 
-        if (sons.empty()) {
-            if (result != keys.end() && *result != key) {
-                counter += 1;
+        if (m_sons.empty()) {
+            if (result != m_keys.end() && *result != key) {
+                m_counter += 1;
                 return false;
             }
             // leaf node
-            keys.erase(result);
+            m_keys.erase(result);
             return true;
         }
 
-        if (result != keys.end() && *result == key) {
+        if (result != m_keys.end() && *result == key) {
             // take key from mostleft son
-            if (sons[index]->keys.size() > N - 1) {
-                *result = max(sons[index + 1]);
-                return sons[index]->erase(*result);
+            if (m_sons[index]->m_keys.size() > N - 1) {
+                *result = max(m_sons[index + 1]);
+                return m_sons[index]->erase(*result);
             }
             // take key from mostright son
-            if (sons[index + 1]->keys.size() > N - 1) {
-                *result = min(sons[index]);
-                return sons[index + 1]->erase(*result);
+            if (m_sons[index + 1]->m_keys.size() > N - 1) {
+                *result = min(m_sons[index]);
+                return m_sons[index + 1]->erase(*result);
             }
             erase_helper(index, index + 1);
-            return sons[index]->erase(key);
+            return m_sons[index]->erase(key);
         }
 
         // delete key from son node
-        if (sons[index]->keys.size() == N - 1) {
-            if (index < sons.size() - 1 && sons[index + 1]->keys.size() == N) {
+        if (m_sons[index]->m_keys.size() == N - 1) {
+            if (index < m_sons.size() - 1 && m_sons[index + 1]->m_keys.size() == N) {
                 // take key from right son
-                sons[index]->keys.push_back(keys[index]);
+                m_sons[index]->m_keys.push_back(m_keys[index]);
 
-                if (!sons[index]->sons.empty()) {
-                    sons[index]->sons.push_back(sons[index + 1]->sons.front());
-                    sons[index + 1]->sons.erase(sons.begin());
+                if (!m_sons[index]->m_sons.empty()) {
+                    m_sons[index]->m_sons.push_back(m_sons[index + 1]->m_sons.front());
+                    m_sons[index + 1]->m_sons.erase(m_sons.begin());
                 }
 
-                keys[index] = sons[index + 1]->keys.front();
-                sons[index + 1]->keys.erase(sons[index + 1]->keys.begin());
+                m_keys[index] = m_sons[index + 1]->m_keys.front();
+                m_sons[index + 1]->m_keys.erase(m_sons[index + 1]->m_keys.begin());
 
-                sons[index + 1]->counter -= 1;
-                sons[index]->counter += 1;
+                m_sons[index + 1]->m_counter -= 1;
+                m_sons[index]->m_counter += 1;
 
-            } else if (index > 0 && sons[index - 1]->keys.size() == N) {
+            } else if (index > 0 && m_sons[index - 1]->m_keys.size() == N) {
                 // take key from left son
-                sons[index]->keys.insert(sons[index]->keys.begin(), keys[index]);
+                m_sons[index]->m_keys.insert(m_sons[index]->m_keys.begin(), m_keys[index]);
 
-                if (!sons[index]->sons.empty()) {
-                    sons[index]->sons.insert(sons[index]->sons.begin(),
-                                             sons[index - 1]->sons.back());
+                if (!m_sons[index]->m_sons.empty()) {
+                    m_sons[index]->m_sons.insert(m_sons[index]->m_sons.begin(),
+                                             m_sons[index - 1]->m_sons.back());
 
-                    sons[index - 1]->sons.pop_back();
+                    m_sons[index - 1]->m_sons.pop_back();
                 }
 
-                keys[index] = sons[index - 1]->keys.back();
-                sons[index - 1]->keys.pop_back();
+                m_keys[index] = m_sons[index - 1]->m_keys.back();
+                m_sons[index - 1]->m_keys.pop_back();
 
-                sons[index - 1]->counter -= 1;
-                sons[index]->counter += 1;
+                m_sons[index - 1]->m_counter -= 1;
+                m_sons[index]->m_counter += 1;
             } else {
                 // merge with right brother
-                if (index < sons.size() - 1) {
+                if (index < m_sons.size() - 1) {
                     erase_helper(index, index + 1);
-                    return sons[index]->erase(key);
+                    return m_sons[index]->erase(key);
                 }
                 // merge with left brother
                 erase_helper(index - 1, index);
-                return sons[index - 1]->erase(key);
+                return m_sons[index - 1]->erase(key);
             }
         }
-        return sons[index]->erase(key);
+        return m_sons[index]->erase(key);
     }
 
+  private:
     Node *split_self(size_t begin, size_t end) {
-        keys_t node_keys(keys.begin() + begin, keys.begin() + end);
+        keys_t node_keys(m_keys.begin() + begin, m_keys.begin() + end);
         sons_t node_sons;
         size_t node_counter = node_keys.size();
 
-        if (sons.size() == 2 * N) {
+        if (m_sons.size() == 2 * N) {
             for (int i = 0; i < end - begin + 1; ++i) {
-                node_sons.push_back(sons[i + begin]);
-                node_counter += sons[i + begin]->counter;
+                node_sons.push_back(m_sons[i + begin]);
+                node_counter += m_sons[i + begin]->count();
             }
         }
 
         Node *new_node = new Node(std::move(node_keys), std::move(node_sons), node_counter);
 
-        for (const auto &son : new_node->sons) {
-            son->parent = new_node;
+        for (const auto &son : new_node->m_sons) {
+            son->m_parent = new_node;
         }
         return new_node;
     }
 
     // split son node
     void split(size_t son_index) {
-        Node *son = sons[son_index];
-        keys.insert(keys.begin() + son_index, son->keys[N - 1]);
+        Node *son = m_sons[son_index];
+        m_keys.insert(m_keys.begin() + son_index, son->m_keys[N - 1]);
         // create two nodes, delete old node
 
         Node *left = son->split_self(0, N - 1);
         Node *right = son->split_self(N, 2 * N - 1);
 
-        right->parent = this;
-        left->parent = this;
+        right->m_parent = this;
+        left->m_parent = this;
 
-        sons[son_index] = left;
-        sons.push_back(right);
+        m_sons[son_index] = left;
+        m_sons.push_back(right);
 
-        son->sons.clear();
+        son->m_sons.clear();
         delete son;
+    }
+    Key max(const Node *node) {
+        while (!node->m_sons.empty()) {
+            node = node->m_sons.back();
+        }
+        return node->m_keys.back();
+    }
+
+    Key min(const Node *node) {
+        while (!node->m_sons.empty()) {
+            node = node->m_sons.front();
+        }
+        return node->m_keys.front();
+    }
+
+    void delete_son(size_t index) {
+        m_sons[index]->m_sons.clear();
+        delete m_sons[index];
+    }
+
+    void erase_helper(size_t left, size_t right) {
+        Node *left_son = m_sons[left];
+        Node *right_son = m_sons[right];
+
+        left_son->m_keys.push_back(m_keys[left]);
+        left_son->m_counter += right_son->m_counter + 1;
+
+        left_son->m_keys.insert(left_son->m_keys.end(), right_son->m_keys.begin(), right_son->m_keys.end());
+        left_son->m_sons.insert(left_son->m_sons.end(), right_son->m_sons.begin(), right_son->m_sons.end());
+
+        delete_son(right);
+
+        m_keys.erase(m_keys.begin() + left);
+        m_sons.erase(m_sons.begin() + right);
     }
 };
 
 template <typename Key, size_t N>
 std::ofstream &operator<<(std::ofstream &out, const Node<Key, N> &node) {
     out << "\tnode" << &node << " [shape=Mrecord, label=\"{";
-    out << " size: " << node.counter << " | { ";
+    out << " size: " << node.m_counter << " | { ";
 
-    for (size_t i = 0; i < node.keys.size() - 1; ++i) {
-        out << node.keys[i] << " | ";
+    for (size_t i = 0; i < node.m_keys.size() - 1; ++i) {
+        out << node.m_keys[i] << " | ";
     }
-    out << node.keys.back() << " }}\"]\n";
-    if (!node.sons.empty()) {
-        for (const Node<Key, N> *son : node.sons) {
+    out << node.m_keys.back() << " }}\"]\n";
+    if (!node.m_sons.empty()) {
+        for (const Node<Key, N> *son : node.m_sons) {
             out << "\tnode" << &node << " -> node" << son << "[weight=100]\n";
             out << *son;
         }
     }
-    out << "\tnode" << &node << " -> node" << node.parent << "[style=dashed]\n";
+    out << "\tnode" << &node << " -> node" << node.m_parent << "[style=dashed]\n";
     return out;
 }
 
@@ -348,10 +332,10 @@ class BTree {
     using node_p = Node<Key, N> *;
     using value_type = Key;
 
-    node_p root;
+    node_p root = nullptr;
 
   public:
-    BTree() : root(nullptr) {}
+    BTree() = default;
     BTree(std::initializer_list<Key> list) : root(new Node<Key, N>) {
         for (auto elem : list) {
             root->insert(elem);
@@ -366,16 +350,16 @@ class BTree {
             root = new Node<Key, N>({key}, {}, 1);
             return true;
         }
-        if (root->keys.size() == 2 * N - 1) {
+        if (root->m_keys.size() == 2 * N - 1) {
             node_p left_root = root->split_self(0, N - 1);
             node_p right_root = root->split_self(N, 2 * N - 1);
             node_p new_root =
-                new Node<Key, N>({root->keys[N - 1]}, {left_root, right_root}, root->counter);
+                new Node<Key, N>({root->m_keys[N - 1]}, {left_root, right_root}, root->count());
 
-            left_root->parent = new_root;
-            right_root->parent = new_root;
+            left_root->m_parent = new_root;
+            right_root->m_parent = new_root;
 
-            root->sons.clear();
+            root->m_sons.clear();
             delete root;
 
             root = new_root;
@@ -387,11 +371,11 @@ class BTree {
         if (!root) {
             return false;
         }
-        if (root->keys.size() == 1 && root->keys.front() == key) {
+        if (root->m_keys.size() == 1 && root->m_keys.front() == key) {
             root->erase_helper(0, 1);
             node_p old_root = root;
-            root = root->sons.front();
-            old_root->sons.pop_back();
+            root = root->m_sons.front();
+            old_root->m_sons.pop_back();
             delete old_root;
         }
         return root->erase(key);
@@ -426,19 +410,19 @@ class BTree {
         base_iterator(node_pointer node, size_t pos) : node(node), position(pos) {}
         base_iterator() : node(nullptr), position(0) {}
 
-        const_reference operator*() const { return node->keys[position]; }
-        const_pointer operator->() const { return &node->keys[position]; }
+        const_reference operator*() const { return node->m_keys[position]; }
+        const_pointer operator->() const { return &node->m_keys[position]; }
         base_iterator &operator++() {
             position += 1;
-            if (position < node->sons.size() || position < node->keys.size()) {
-                while (!node->sons.empty()) {
-                    node = node->sons[position];
+            if (position < node->m_sons.size() || position < node->m_keys.size()) {
+                while (!node->m_sons.empty()) {
+                    node = node->m_sons[position];
                     position = 0;
                 }
                 return *this;
             }
-            position = node->keys.size();
-            while (position == node->keys.size() && node->parent) {
+            position = node->m_keys.size();
+            while (position == node->m_keys.size() && node->m_parent) {
                 // TODO rewrite to std::upper_bound
 #if 0
                 auto temp = node->keys[position];
@@ -448,9 +432,9 @@ class BTree {
                     node->keys.begin()
 #else
                 auto temp = node;
-                node = node->parent;
+                node = node->m_parent;
                 position =
-                    std::find(node->sons.begin(), node->sons.end(), temp) - node->sons.begin();
+                    std::find(node->m_sons.begin(), node->m_sons.end(), temp) - node->m_sons.begin();
 #endif
             }
 
@@ -495,19 +479,19 @@ class BTree {
 
     iterator begin() {
         node_p begin = root;
-        while (begin->sons.size()) {
-            begin = begin->sons.front();
+        while (begin->m_sons.size()) {
+            begin = begin->m_sons.front();
         }
         return iterator(begin, 0);
     }
-    iterator end() { return iterator(root, root->keys.size()); }
+    iterator end() { return iterator(root, root->m_keys.size()); }
 
     const_iterator cbegin() const {
         node_p begin = root;
-        while (begin->sons.size()) {
-            begin = begin->sons.front();
+        while (begin->m_sons.size()) {
+            begin = begin->m_sons.front();
         }
         return const_iterator(begin, 0);
     }
-    const_iterator cend() const { return const_iterator(root, root->keys.size()); }
+    const_iterator cend() const { return const_iterator(root, root->m_keys.size()); }
 };
