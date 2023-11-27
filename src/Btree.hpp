@@ -3,8 +3,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <vector>
 #include <utility>
+#include <vector>
 
 template <typename Key, size_t N>
 class BTree;
@@ -27,6 +27,10 @@ struct Node {
 
   public:
     Node() = default;
+
+    Node(const keys_t &keys, const sons_t &sons, size_t size, Node *parent)
+        : m_keys(keys), m_sons(sons), m_counter(size), m_parent(parent) {}
+
     Node(const keys_t &keys, const sons_t &sons, size_t size)
         : m_keys(keys), m_sons(sons), m_counter(size) {}
 
@@ -129,9 +133,7 @@ struct Node {
         return {};
     }
 
-    BTree<Key, N>::iterator find(const Key &key) {
-        return std::as_const(*this).find(key);
-    }
+    BTree<Key, N>::iterator find(const Key &key) { return std::as_const(*this).find(key); }
 
     bool insert(const Key &key) {
         auto result = std::lower_bound(m_keys.begin(), m_keys.end(), key);
@@ -208,7 +210,7 @@ struct Node {
 
                 if (!m_sons[index]->m_sons.empty()) {
                     m_sons[index]->m_sons.insert(m_sons[index]->m_sons.begin(),
-                                             m_sons[index - 1]->m_sons.back());
+                                                 m_sons[index - 1]->m_sons.back());
 
                     m_sons[index - 1]->m_sons.pop_back();
                 }
@@ -297,8 +299,10 @@ struct Node {
         left_son->m_keys.push_back(m_keys[left]);
         left_son->m_counter += right_son->m_counter + 1;
 
-        left_son->m_keys.insert(left_son->m_keys.end(), right_son->m_keys.begin(), right_son->m_keys.end());
-        left_son->m_sons.insert(left_son->m_sons.end(), right_son->m_sons.begin(), right_son->m_sons.end());
+        left_son->m_keys.insert(left_son->m_keys.end(), right_son->m_keys.begin(),
+                                right_son->m_keys.end());
+        left_son->m_sons.insert(left_son->m_sons.end(), right_son->m_sons.begin(),
+                                right_son->m_sons.end());
 
         delete_son(right);
 
@@ -332,60 +336,93 @@ class BTree {
     using node_p = Node<Key, N> *;
     using value_type = Key;
 
-    node_p root = nullptr;
+    node_p m_root = nullptr;
+
+    node_p deep_copy(node_p other, node_p parent) {
+        node_p new_node = new Node<Key, N>(other->m_keys, {}, other->m_counter, parent);
+    
+        if (!other->m_sons.empty()) {
+            for (const node_p son : other->m_sons) {
+                new_node->m_sons.push_back(deep_copy(son, new_node));
+            }
+        }
+        return new_node;
+    }
 
   public:
     BTree() = default;
-    BTree(std::initializer_list<Key> list) : root(new Node<Key, N>) {
+    BTree(std::initializer_list<Key> list) : m_root(new Node<Key, N>) {
         for (auto elem : list) {
-            root->insert(elem);
+            insert(elem);
         }
     }
-    BTree(const BTree<Key, N> &other) = delete;
 
-    ~BTree() { delete root; }
+    BTree(BTree<Key, N> &&other) : m_root(std::exchange(other.m_root, nullptr)) {}
+
+    BTree(const BTree &other) : m_root(deep_copy(other.m_root, nullptr)) {}
+
+    BTree &operator=(const BTree &other) {
+        if (this == std::addressof(other)) {
+            return *this;
+        }
+        BTree temp(other);
+        std::swap(temp.m_root, m_root);
+
+        return *this;
+    }
+    BTree &operator=(BTree &&other) {
+        if (this == std::addressof(other)) {
+            return *this;
+        }
+        BTree temp{other};
+
+        std::swap(m_root, temp.m_root);
+        return *this;
+    }
+
+    ~BTree() { delete m_root; }
 
     bool insert(const Key &key) {
-        if (!root) {
-            root = new Node<Key, N>({key}, {}, 1);
+        if (!m_root) {
+            m_root = new Node<Key, N>({key}, {}, 1);
             return true;
         }
-        if (root->m_keys.size() == 2 * N - 1) {
-            node_p left_root = root->split_self(0, N - 1);
-            node_p right_root = root->split_self(N, 2 * N - 1);
+        if (m_root->m_keys.size() == 2 * N - 1) {
+            node_p left_root = m_root->split_self(0, N - 1);
+            node_p right_root = m_root->split_self(N, 2 * N - 1);
             node_p new_root =
-                new Node<Key, N>({root->m_keys[N - 1]}, {left_root, right_root}, root->count());
+                new Node<Key, N>({m_root->m_keys[N - 1]}, {left_root, right_root}, m_root->count());
 
             left_root->m_parent = new_root;
             right_root->m_parent = new_root;
 
-            root->m_sons.clear();
-            delete root;
+            m_root->m_sons.clear();
+            delete m_root;
 
-            root = new_root;
+            m_root = new_root;
         }
-        return root->insert(key);
+        return m_root->insert(key);
     }
 
     bool erase(const Key &key) {
-        if (!root) {
+        if (!m_root) {
             return false;
         }
-        if (root->m_keys.size() == 1 && root->m_keys.front() == key) {
-            root->erase_helper(0, 1);
-            node_p old_root = root;
-            root = root->m_sons.front();
+        if (m_root->m_keys.size() == 1 && m_root->m_keys.front() == key) {
+            m_root->erase_helper(0, 1);
+            node_p old_root = m_root;
+            m_root = m_root->m_sons.front();
             old_root->m_sons.pop_back();
             delete old_root;
         }
-        return root->erase(key);
+        return m_root->erase(key);
     }
 
-    size_t distance(const Key &begin, const Key &end) const { return root->distance(begin, end); }
+    size_t distance(const Key &begin, const Key &end) const { return m_root->distance(begin, end); }
 
     friend std::ofstream &operator<<(std::ofstream &out, const BTree<Key, N> &tree) {
         out << "digraph G {\n";
-        out << *tree.root;
+        out << *tree.m_root;
         out << "}\n";
         return out;
     }
@@ -433,8 +470,8 @@ class BTree {
 #else
                 auto temp = node;
                 node = node->m_parent;
-                position =
-                    std::find(node->m_sons.begin(), node->m_sons.end(), temp) - node->m_sons.begin();
+                position = std::find(node->m_sons.begin(), node->m_sons.end(), temp) -
+                           node->m_sons.begin();
 #endif
             }
 
@@ -446,6 +483,7 @@ class BTree {
             return temp;
         }
 
+        // TODO implement
         base_iterator &operator--() {}
 
         base_iterator operator--(int) {
@@ -468,30 +506,22 @@ class BTree {
     using const_iterator = base_iterator;
     using iterator = base_iterator;
 
-    iterator find(const Key &key) {
-        auto result = root->find(key);
-        return (result == iterator() ? end() : result);
-    }
     const_iterator find(const Key &key) const {
-        auto result = root->find(key);
+        auto result = m_root->find(key);
         return (result == const_iterator() ? cend() : result);
     }
 
-    iterator begin() {
-        node_p begin = root;
-        while (begin->m_sons.size()) {
-            begin = begin->m_sons.front();
-        }
-        return iterator(begin, 0);
-    }
-    iterator end() { return iterator(root, root->m_keys.size()); }
+    iterator find(const Key &key) { return std::as_const(*this).find(key); }
 
     const_iterator cbegin() const {
-        node_p begin = root;
+        node_p begin = m_root;
         while (begin->m_sons.size()) {
             begin = begin->m_sons.front();
         }
         return const_iterator(begin, 0);
     }
-    const_iterator cend() const { return const_iterator(root, root->m_keys.size()); }
+    const_iterator cend() const { return const_iterator(m_root, m_root->m_keys.size()); }
+
+    iterator begin() { return std::as_const(*this).cbegin(); }
+    iterator end() { return std::as_const(*this).cend(); }
 };
