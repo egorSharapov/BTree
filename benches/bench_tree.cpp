@@ -9,10 +9,12 @@ static void custom_args(benchmark::internal::Benchmark* b) {
 }
 
 
-static int range_query(const std::set<int64_t> &set, int64_t begin, int64_t end) {
+static int range_query(benchmark::State &state, const std::set<int64_t> &set, int64_t begin, int64_t end) {
     using it = std::set<int64_t>::iterator;
+    state.PauseTiming();
     it start = set.lower_bound(begin);
     it stop = set.upper_bound(end);
+    state.ResumeTiming();
     return std::distance(start, stop);
 }
 
@@ -27,7 +29,7 @@ static void BM_BTreeDistanceTest(benchmark::State &state) {
         }
         state.ResumeTiming();
 
-        int btree_distance = btree.distance(state.range(1), state.range(2));
+        size_t btree_distance = btree.distance(state.range(1), state.range(2));
         benchmark::DoNotOptimize(btree_distance);
     }
 }
@@ -41,7 +43,7 @@ static void BM_SetDistanceTest(benchmark::State &state) {
         }
         state.ResumeTiming();
 
-        int set_distance = range_query(set, state.range(1), state.range(2));
+        size_t set_distance = range_query(state, set, state.range(1), state.range(2));
         benchmark::DoNotOptimize(set_distance);
     }
 }

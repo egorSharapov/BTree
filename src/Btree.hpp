@@ -234,6 +234,24 @@ struct Node {
         return m_sons[index]->erase(key);
     }
 
+    template <typename CharT>
+    void dump(std::basic_ostream<CharT> &out) const {
+        out << "\tnode" << this << " [shape=Mrecord, label=\"{";
+        out << " size: " << m_counter << " | { ";
+
+        for (size_t i = 0; i < m_keys.size() - 1; ++i) {
+            out << m_keys[i] << " | ";
+        }
+        out << m_keys.back() << " }}\"]\n";
+        if (!m_sons.empty()) {
+            for (const Node *son : m_sons) {
+                out << "\tnode" << this << " -> node" << son << "[weight=100]\n";
+                son->dump(out);
+            }
+        }
+        out << "\tnode" << this << " -> node" << m_parent << "[style=dashed]\n";
+    }
+
   private:
     Node *split_self(size_t begin, size_t end) {
         keys_t node_keys(m_keys.begin() + begin, m_keys.begin() + end);
@@ -311,22 +329,9 @@ struct Node {
     }
 };
 
-template <typename Key, size_t N>
-std::ofstream &operator<<(std::ofstream &out, const Node<Key, N> &node) {
-    out << "\tnode" << &node << " [shape=Mrecord, label=\"{";
-    out << " size: " << node.m_counter << " | { ";
-
-    for (size_t i = 0; i < node.m_keys.size() - 1; ++i) {
-        out << node.m_keys[i] << " | ";
-    }
-    out << node.m_keys.back() << " }}\"]\n";
-    if (!node.m_sons.empty()) {
-        for (const Node<Key, N> *son : node.m_sons) {
-            out << "\tnode" << &node << " -> node" << son << "[weight=100]\n";
-            out << *son;
-        }
-    }
-    out << "\tnode" << &node << " -> node" << node.m_parent << "[style=dashed]\n";
+template <typename CharT, typename Key, size_t N>
+std::basic_ostream<CharT> &operator<<(std::basic_ostream<CharT> &out, const Node<Key, N> &node) {
+    dump(node);
     return out;
 }
 
@@ -340,7 +345,7 @@ class BTree {
 
     node_p deep_copy(node_p other, node_p parent) {
         node_p new_node = new Node<Key, N>(other->m_keys, {}, other->m_counter, parent);
-    
+
         if (!other->m_sons.empty()) {
             for (const node_p son : other->m_sons) {
                 new_node->m_sons.push_back(deep_copy(son, new_node));
@@ -420,9 +425,15 @@ class BTree {
 
     size_t distance(const Key &begin, const Key &end) const { return m_root->distance(begin, end); }
 
-    friend std::ofstream &operator<<(std::ofstream &out, const BTree<Key, N> &tree) {
+    template <typename CharT>
+    friend std::basic_ostream<CharT> &operator<<(std::basic_ostream<CharT> &out,
+                                                 const BTree<Key, N> &tree) {
         out << "digraph G {\n";
-        out << *tree.m_root;
+        if (tree.m_root) {
+            tree.m_root->dump(out);
+        } else {
+            out << "\tnullptr\n";
+        }
         out << "}\n";
         return out;
     }
@@ -438,8 +449,6 @@ class BTree {
         using node_pointer = BTree::node_p;
 
       private:
-        friend BTree;
-
         node_pointer node;
         size_t position;
 
@@ -496,7 +505,7 @@ class BTree {
             return (lhs.node == rhs.node) && (lhs.position == rhs.position);
         }
         friend bool operator!=(const base_iterator &lhs, const base_iterator &rhs) {
-            return (lhs.node != rhs.node) || (lhs.position != rhs.position);
+            return !(lhs == rhs);
         }
     };
 
@@ -515,12 +524,16 @@ class BTree {
 
     const_iterator cbegin() const {
         node_p begin = m_root;
-        while (begin->m_sons.size()) {
-            begin = begin->m_sons.front();
+        if (begin) {
+            while (begin->m_sons.size()) {
+                begin = begin->m_sons.front();
+            }
         }
         return const_iterator(begin, 0);
     }
-    const_iterator cend() const { return const_iterator(m_root, m_root->m_keys.size()); }
+    const_iterator cend() const {
+        return (m_root ? const_iterator(m_root, m_root->m_keys.size()) : const_iterator());
+    }
 
     iterator begin() { return std::as_const(*this).cbegin(); }
     iterator end() { return std::as_const(*this).cend(); }
