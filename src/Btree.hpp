@@ -10,15 +10,12 @@ template <typename Key, size_t N>
 class BTree;
 
 template <typename Key, size_t N>
-struct Node {
+struct Node final {
   private:
     using keys_t = std::vector<Key>;
     using sons_t = std::vector<Node *>;
 
     friend BTree<Key, N>;
-
-    template <typename T, size_t U>
-    friend std::ofstream &operator<<(std::ofstream &out, const Node<T, U> &node);
 
     keys_t m_keys;
     sons_t m_sons;
@@ -27,15 +24,17 @@ struct Node {
 
   public:
     Node() = default;
+    Node(const Node &) = delete;
+    Node(Node &&) = delete;
 
-    Node(const keys_t &keys, const sons_t &sons, size_t size, Node *parent)
+    Node(const keys_t &keys, const sons_t &sons, size_t size, Node *parent = nullptr)
         : m_keys(keys), m_sons(sons), m_counter(size), m_parent(parent) {}
 
-    Node(const keys_t &keys, const sons_t &sons, size_t size)
-        : m_keys(keys), m_sons(sons), m_counter(size) {}
-
     Node(keys_t &&other_keys, sons_t &&other_sons, size_t size) noexcept
-        : m_keys(other_keys), m_sons(other_sons), m_counter(size) {}
+        : m_keys(std::move(other_keys)), m_sons(std::move(other_sons)), m_counter(size) {}
+
+    Node &operator=(const Node &rhs) = delete;
+    Node &operator=(Node &&rhs) = delete;
 
     ~Node() {
         for (Node *son : m_sons) {
@@ -336,7 +335,7 @@ std::basic_ostream<CharT> &operator<<(std::basic_ostream<CharT> &out, const Node
 }
 
 template <typename Key, size_t N>
-class BTree {
+class BTree final {
   private:
     using node_p = Node<Key, N> *;
     using value_type = Key;
