@@ -87,6 +87,9 @@ struct Node final {
         size_t left_bound = first - m_keys.begin();
         size_t right_bound = second - m_keys.begin();
         if (m_sons.empty()) {
+            if (second == m_keys.end() || *second != end) {
+                counter -= 1;
+            }
             return counter;
         }
 
@@ -152,8 +155,12 @@ struct Node final {
             }
             return m_sons[index + 1]->insert(key);
         }
-        m_keys.insert(result, key);
-        return true;
+        if (result == m_keys.end() || *result != key) {
+            m_keys.insert(result, key);
+            return true;
+        }
+        m_counter -= 1;
+        return false;
     }
 
     bool erase(const Key &key) {
@@ -422,7 +429,12 @@ class BTree final {
         return m_root->erase(key);
     }
 
-    size_t distance(const Key &begin, const Key &end) const { return m_root->distance(begin, end); }
+    size_t distance(const Key &begin, const Key &end) const {
+        if (end < begin) {
+            return 0;
+        }
+        return m_root->distance(begin, end);
+    }
 
     template <typename CharT>
     friend std::basic_ostream<CharT> &operator<<(std::basic_ostream<CharT> &out,
@@ -445,14 +457,14 @@ class BTree final {
         using value_type = BTree::value_type;
         using const_pointer = const value_type *;
         using const_reference = const value_type &;
-        using node_pointer = BTree::node_p;
+        using const_node_pointer = const Node<Key, N> *;
 
       private:
-        node_pointer node;
-        size_t position;
+        const_node_pointer node;
+        ssize_t position;
 
       public:
-        base_iterator(node_pointer node, size_t pos) : node(node), position(pos) {}
+        base_iterator(const_node_pointer node, ssize_t pos) : node(node), position(pos) {}
         base_iterator() : node(nullptr), position(0) {}
 
         const_reference operator*() const { return node->m_keys[position]; }

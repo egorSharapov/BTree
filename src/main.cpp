@@ -24,10 +24,8 @@ int main() {
         case 'q':
             in >> arg1;
             in >> arg2;
-            if (arg1 <= arg2) {
-                std::cout << tree.distance(arg1, arg2) << " ";
-                break;
-            }
+            std::cout << tree.distance(arg1, arg2) << " ";
+            break;
         default:
             return -1;
         }
