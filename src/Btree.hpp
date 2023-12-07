@@ -430,7 +430,7 @@ class BTree final {
     }
 
     size_t distance(const Key &begin, const Key &end) const {
-        if (end < begin) {
+        if (end <= begin) {
             return 0;
         }
         return m_root->distance(begin, end);
